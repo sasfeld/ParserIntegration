@@ -1,10 +1,9 @@
 package org.bbaw.wsp.cms.dochandler.parser.text.parser;
 
-import java.net.URL;
-
+import org.bbaw.wsp.cms.dochandler.parser.document.IDocument;
 import org.bbaw.wsp.cms.dochandler.parser.document.PdfDocument;
 import org.bbaw.wsp.cms.dochandler.parser.metadata.MetadataRecord;
-import org.bbaw.wsp.util.DcFetcherTool;
+import org.bbaw.wsp.util.EdocIndexMetadataFetcherTool;
 
 import de.mpg.mpiwg.berlin.mpdl.exception.ApplicationException;
 
@@ -17,7 +16,7 @@ import de.mpg.mpiwg.berlin.mpdl.exception.ApplicationException;
  * @date 15.08.2012
  * 
  */
-public class EdocParserImpl extends PdfParserImpl {
+public class EdocParserImpl extends HtmlParserImpl {
   private static EdocParserImpl instance;
 
   /**
@@ -38,34 +37,52 @@ public class EdocParserImpl extends PdfParserImpl {
   }
 
   /**
-   * Parse an eDoc and return the object returned by the {@link ISaveStrategy} .
+   * Parse an eDoc and return the object returned by the {@link ISaveStrategy}
+   * 
+   * @param startUri
+   *          the URI where the harvesting was started.
+   * @param uri
+   *          the URI to the eDoc's index.html (which contains the reference to
+   *          the eDoc).
    * 
    * @return Object returned by the {@link ISaveStrategy}
    * @throws ApplicationException
-   * @throws IllegalArgumentException
-   *           if the uri is null or empty.
-   * @throws IllegalStateException
-   *           if the {@link ISaveStrategy} wasn't set before.
    */
   public Object parse(final String startUri, final String uri) throws ApplicationException {
-    // Parse eDoc
-    final Object parsedDoc = super.parsePages(startUri, uri);
+    // Parse eDoc index
+    final Object parsedDocIndex = super.parse(startUri, uri);
 
-    // Parse index.html and save DC fields.
-    if (parsedDoc instanceof PdfDocument) {
-      final PdfDocument parsedPDF = (PdfDocument) parsedDoc;
-      MetadataRecord metadata = parsedPDF.getMetadata();
-      if(metadata == null) {
-        metadata = new MetadataRecord();
+    if (parsedDocIndex instanceof IDocument) {
+      MetadataRecord metadata = new MetadataRecord();
+
+      EdocIndexMetadataFetcherTool.fetchHtmlDirectly(uri, metadata);
+
+      String eDocUrl = metadata.getRealDocUrl();
+
+      if (eDocUrl != null) {
+        // Parse eDoc
+        System.out.println("eDocUrl: " + eDocUrl);
+        final Object parsedEDoc = PdfParserImpl.getInstance().parsePages(startUri, eDocUrl);
+        if (parsedEDoc instanceof PdfDocument) {
+          final PdfDocument parsedPDF = (PdfDocument) parsedEDoc;
+          parsedPDF.setMetadata(metadata);
+
+          return parsedPDF;
+        }
       }
-      URL srcUrl;
-      srcUrl = this.resourceReader.getURI(uri);
-      srcUrl = EdocUriParser.getIndexURI(srcUrl);
-      metadata = DcFetcherTool.fetchHtmlDirectly(srcUrl, metadata);
-      parsedPDF.setMetadata(metadata);
-      return parsedPDF;
+      else {
+        throw new ApplicationException("Couldn't fetch the eDoc's URL from the file: "+uri);
+      }
     }
 
-    return parsedDoc;
+    return null;
+  }
+
+  public static void main(String[] args) throws ApplicationException {
+    EdocParserImpl eDocParser = new EdocParserImpl();
+    String uri = "C:/Dokumente und Einstellungen/wsp-shk1/Eigene Dateien/opus32_bbaw_volltexte_20120607/volltexte/2006/1/index.html";
+    String startUri = "C:/Dokumente und Einstellungen/wsp-shk1/Eigene Dateien/opus32_bbaw_volltexte_20120607/volltexte/2006/1/";
+    IDocument doc = (IDocument) eDocParser.parse(startUri, uri);
+    System.out.println(doc);
   }
 }
